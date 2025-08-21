@@ -167,4 +167,75 @@ router.post("/:id/fund", authenticateJWT, async (req: AuthRequest, res: Response
   }
 });
 
+
+/**
+ * POST /api/escrow/:id/ship
+ * Body: { tracking_number }
+ * Marks escrow as shipped (seller confirms shipping)
+ */
+router.post("/:id/ship", authenticateJWT, async (req: AuthRequest, res: Response) => {
+  try {
+    const escrowId = req.params.id;
+    console.log("Ship request body:", req.body);
+    
+    if (!req.body) {
+      return res.status(400).json({ error: "No request body received" });
+    }
+    
+    const { tracking_number } = req.body;
+
+    console.log("Current user role:", req.user?.role);
+    
+    // only sellers can ship
+    if (req.user?.role !== "seller") {
+      return res.status(403).json({ 
+        error: "Only sellers can mark escrow as shipped",
+        current_role: req.user?.role 
+      });
+    }
+
+    // check escrow
+    const [escrowRows] = await db.query(
+      "SELECT id, status FROM escrow_transactions WHERE id = ?",
+      [escrowId]
+    );
+    const escrows = escrowRows as any[];
+
+    if (escrows.length === 0) {
+      return res.status(404).json({ error: "Escrow not found" });
+    }
+
+    const escrow = escrows[0];
+    console.log("Current escrow status for shipping:", escrow.status);
+
+    if (escrow.status !== "funded") {
+      return res.status(400).json({ 
+        error: "Escrow must be in 'funded' state before shipping",
+        current_status: escrow.status 
+      });
+    }
+
+    // update escrow status
+    await db.query(
+      "UPDATE escrow_transactions SET status = 'shipped', updated_at = NOW() WHERE id = ?",
+      [escrowId]
+    );
+
+    // log audit
+    await db.query(
+      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (?, ?, 'ship', 'escrow_transactions', ?, JSON_OBJECT('tracking_number', ?), NOW())`,
+      [uuidv4(), req.user?.id, escrowId, tracking_number || null]
+    );
+
+    res.json({
+      message: "Escrow marked as shipped",
+      escrow: { id: escrowId, status: "shipped", tracking_number: tracking_number || null }
+    });
+  } catch (err) {
+    console.error("Ship escrow error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;
