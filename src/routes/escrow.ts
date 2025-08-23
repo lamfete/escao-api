@@ -238,4 +238,235 @@ router.post("/:id/ship", authenticateJWT, async (req: AuthRequest, res: Response
   }
 });
 
+/**
+ * POST /api/escrow/:id/confirm
+ * Buyer confirms they have received the goods
+ */
+router.post("/:id/confirm", authenticateJWT, async (req: AuthRequest, res: Response) => {
+  try {
+    const escrowId = req.params.id;
+
+    // only buyers can confirm
+    if (req.user?.role !== "buyer") {
+      return res.status(403).json({ error: "Only buyers can confirm receipt" });
+    }
+
+    // check escrow
+    const [escrowRows] = await db.query(
+      "SELECT id, status FROM escrow_transactions WHERE id = ?",
+      [escrowId]
+    );
+    const escrows = escrowRows as any[];
+
+    if (escrows.length === 0) {
+      return res.status(404).json({ error: "Escrow not found" });
+    }
+
+    const escrow = escrows[0];
+
+    if (escrow.status !== "shipped") {
+      return res.status(400).json({ error: "Escrow must be in 'shipped' state before confirming" });
+    }
+
+    // update escrow status
+    await db.query(
+      "UPDATE escrow_transactions SET status = 'confirmed', updated_at = NOW() WHERE id = ?",
+      [escrowId]
+    );
+
+    // audit log
+    await db.query(
+      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (?, ?, 'confirm', 'escrow_transactions', ?, JSON_OBJECT('status','confirmed'), NOW())`,
+      [uuidv4(), req.user?.id, escrowId]
+    );
+
+    res.json({
+      message: "Escrow confirmed successfully",
+      escrow: { id: escrowId, status: "confirmed" }
+    });
+  } catch (err) {
+    console.error("Confirm escrow error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/escrow/:id/release
+ * Releases funds to seller (usually admin/system action)
+ */
+router.post("/:id/release", authenticateJWT, async (req: AuthRequest, res: Response) => {
+  try {
+    const escrowId = req.params.id;
+
+    // Only admin or system can release funds
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ error: "Only admins can release escrow funds" });
+    }
+
+    // check escrow
+    const [escrowRows] = await db.query(
+      "SELECT id, status FROM escrow_transactions WHERE id = ?",
+      [escrowId]
+    );
+    const escrows = escrowRows as any[];
+
+    if (escrows.length === 0) {
+      return res.status(404).json({ error: "Escrow not found" });
+    }
+
+    const escrow = escrows[0];
+
+    if (escrow.status !== "confirmed") {
+      return res.status(400).json({ error: "Escrow must be 'confirmed' before releasing funds" });
+    }
+
+    // update escrow status
+    await db.query(
+      "UPDATE escrow_transactions SET status = 'released', updated_at = NOW() WHERE id = ?",
+      [escrowId]
+    );
+
+    // simulate payout record
+    const payoutId = uuidv4();
+    await db.query(
+      `INSERT INTO payouts (id, escrow_id, bank_account, method, status, sent_at, pg_reference)
+       VALUES (?, ?, '1234567890', 'BI-FAST', 'pending', NULL, NULL)`,
+      [payoutId, escrowId]
+    );
+
+    // audit log
+    await db.query(
+      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (?, ?, 'release', 'escrow_transactions', ?, JSON_OBJECT('status','released'), NOW())`,
+      [uuidv4(), req.user?.id, escrowId]
+    );
+
+    res.json({
+      message: "Escrow released successfully, payout initiated",
+      escrow: { id: escrowId, status: "released" },
+      payout: { id: payoutId, status: "pending" }
+    });
+  } catch (err) {
+    console.error("Release escrow error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/escrow/:id/dispute
+ * Opens a dispute for an escrow transaction
+ * Body: { reason }
+ */
+router.post("/:id/dispute", authenticateJWT, async (req: AuthRequest, res: Response) => {
+  try {
+    const escrowId = req.params.id;
+    const { reason } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({ error: "Reason is required" });
+    }
+
+    // check escrow
+    const [escrowRows] = await db.query(
+      "SELECT id, status, buyer_id, seller_id FROM escrow_transactions WHERE id = ?",
+      [escrowId]
+    );
+    const escrows = escrowRows as any[];
+
+    if (escrows.length === 0) {
+      return res.status(404).json({ error: "Escrow not found" });
+    }
+
+    const escrow = escrows[0];
+
+    // only buyer or seller involved can open dispute
+    if (req.user?.id !== escrow.buyer_id && req.user?.id !== escrow.seller_id) {
+      return res.status(403).json({ error: "Only buyer or seller can open dispute" });
+    }
+
+    // escrow must be active
+    if (!["funded", "shipped", "confirmed"].includes(escrow.status)) {
+      return res.status(400).json({ error: "Cannot dispute escrow in current state" });
+    }
+
+    // create dispute
+    const disputeId = uuidv4();
+    await db.query(
+      `INSERT INTO disputes (id, escrow_id, opened_by, reason, status, created_at)
+       VALUES (?, ?, ?, ?, 'open', NOW())`,
+      [disputeId, escrowId, req.user?.id, reason]
+    );
+
+    // audit log
+    await db.query(
+      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (?, ?, 'dispute', 'disputes', ?, JSON_OBJECT('reason', ?), NOW())`,
+      [uuidv4(), req.user?.id, disputeId, reason]
+    );
+
+    res.status(201).json({
+      message: "Dispute opened successfully",
+      dispute: { id: disputeId, escrow_id: escrowId, reason, status: "open" }
+    });
+  } catch (err) {
+    console.error("Dispute escrow error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/escrow/:id/cancel
+ * Buyer or Seller can cancel escrow before it is funded
+ */
+router.post("/:id/cancel", authenticateJWT, async (req: AuthRequest, res: Response) => {
+  try {
+    const escrowId = req.params.id;
+
+    // check escrow
+    const [escrowRows] = await db.query(
+      "SELECT id, status, buyer_id, seller_id FROM escrow_transactions WHERE id = ?",
+      [escrowId]
+    );
+    const escrows = escrowRows as any[];
+
+    if (escrows.length === 0) {
+      return res.status(404).json({ error: "Escrow not found" });
+    }
+
+    const escrow = escrows[0];
+
+    // only buyer or seller in this escrow can cancel
+    if (req.user?.id !== escrow.buyer_id && req.user?.id !== escrow.seller_id) {
+      return res.status(403).json({ error: "Only buyer or seller can cancel this escrow" });
+    }
+
+    // can only cancel if not funded
+    if (escrow.status !== "created") {
+      return res.status(400).json({ error: "Escrow can only be cancelled before funding" });
+    }
+
+    // update escrow status
+    await db.query(
+      "UPDATE escrow_transactions SET status = 'cancelled', updated_at = NOW() WHERE id = ?",
+      [escrowId]
+    );
+
+    // audit log
+    await db.query(
+      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (?, ?, 'cancel', 'escrow_transactions', ?, JSON_OBJECT('status','cancelled'), NOW())`,
+      [uuidv4(), req.user?.id, escrowId]
+    );
+
+    res.json({
+      message: "Escrow cancelled successfully",
+      escrow: { id: escrowId, status: "cancelled" }
+    });
+  } catch (err) {
+    console.error("Cancel escrow error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;

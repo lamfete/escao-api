@@ -4,6 +4,7 @@ import authRoutes from "./routes/auth.js";
 import escrowRoutes from "./routes/escrow.js";
 import webhookRoutes from "./routes/webhooks.js";
 import usersRoutes from "./routes/users.js";
+import disputesRoutes from "./routes/disputes.js";
 
 dotenv.config();
 const app = express();
@@ -14,6 +15,7 @@ app.use("/api/escrow", escrowRoutes);
 app.use("/webhooks", webhookRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/escrow", escrowRoutes);
+app.use("/api/disputes", disputesRoutes);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
