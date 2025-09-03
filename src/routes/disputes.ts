@@ -90,7 +90,10 @@ router.post("/:id/resolve", authenticateJWT, async (req: AuthRequest, res: Respo
 
     // check dispute
     const [disputeRows] = await db.query(
-      "SELECT id, status FROM disputes WHERE id = ?",
+      `SELECT d.id, d.status, d.escrow_id, e.seller_id
+       FROM disputes d
+       JOIN escrow_transactions e ON d.escrow_id = e.id
+       WHERE d.id = ?`,
       [disputeId]
     );
     const disputes = disputeRows as any[];
@@ -103,6 +106,30 @@ router.post("/:id/resolve", authenticateJWT, async (req: AuthRequest, res: Respo
 
     if (dispute.status !== "open") {
       return res.status(400).json({ error: "Dispute already resolved or closed" });
+    }
+
+    // If decision is favor_seller, check seller KYC status before releasing funds
+    if (decision === "favor_seller") {
+      const [sellerRows] = await db.query(
+        "SELECT kyc_status FROM users WHERE id = ?",
+        [dispute.seller_id]
+      );
+      const sellers = sellerRows as any[];
+      if (sellers.length === 0 || sellers[0].kyc_status !== "verified") {
+        return res.status(403).json({ error: "Seller is not KYC verified. Cannot release funds." });
+      }
+
+      // Release funds to seller (update escrow status and create payout)
+      await db.query(
+        "UPDATE escrow_transactions SET status = 'released', updated_at = NOW() WHERE id = ?",
+        [dispute.escrow_id]
+      );
+      const payoutId = uuidv4();
+      await db.query(
+        `INSERT INTO payouts (id, escrow_id, bank_account, method, status, sent_at, pg_reference)
+         VALUES (?, ?, '1234567890', 'BI-FAST', 'pending', NULL, NULL)`,
+        [payoutId, dispute.escrow_id]
+      );
     }
 
     // update dispute

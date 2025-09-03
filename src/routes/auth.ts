@@ -89,7 +89,9 @@ router.post("/login", async (req: Request, res: Response) => {
     const users = rows as any[];
 
     if (users.length === 0) {
-      return res.status(400).json({ error: "Invalid email or password" });
+      return res.status(400).json({ 
+        error: "Invalid email or password" 
+      });
     }
 
     const user = users[0];
