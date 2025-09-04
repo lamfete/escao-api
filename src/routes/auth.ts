@@ -20,7 +20,6 @@ router.post("/register", async (req: Request, res: Response) => {
     console.log("Headers:", req.headers);
     console.log("Content-Type:", req.get('Content-Type'));
     console.log("Request body:", req.body);
-    console.log("Raw body:", req.rawBody);
     
     if (!req.body) {
       return res.status(400).json({ error: "No request body received" });
@@ -66,9 +65,14 @@ router.post("/register", async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error("Register error:", err);
-    console.error("Error details:", err.message);
-    console.error("Error code:", err.code);
-    res.status(500).json({ error: "Internal server error", details: err.message });
+    if (err instanceof Error) {
+      console.error("Error details:", err.message);
+      res.status(500).json({ error: "Internal server error", details: err.message });
+    } else {
+      console.error("Error details:", err);
+      res.status(500).json({ error: "Internal server error", details: String(err) });
+    }
+    // Remove err.code since it's not guaranteed to exist
   }
 });
 
