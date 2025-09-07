@@ -2,11 +2,15 @@ import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 dotenv.config();
 
+const dbUrl = new URL(process.env.DATABASE_URL!);
+
 const db = mysql.createPool({
-  host: process.env.DB_HOST!,
-  user: process.env.DB_USER!,
-  password: process.env.DB_PASS!,
-  database: process.env.DB_NAME!,
+  host: dbUrl.hostname,
+  port: Number(dbUrl.port),
+  user: dbUrl.username,
+  password: dbUrl.password,
+  database: dbUrl.pathname.replace("/", ""),
+  ssl: { rejectUnauthorized: true }
 });
 
 export default db;
