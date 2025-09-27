@@ -143,10 +143,16 @@ router.post("/:id/fund", authenticateJWT, async (req: AuthRequest, res: Response
       return res.status(400).json({ error: "No request body received" });
     }
     
-    const { method, pg_reference, qr_code_url } = req.body;
+    // Accept common aliases for robustness
+    const method = (req.body?.method ?? req.body?.payment_method ?? req.body?.paymentMethod ?? "").toString();
+    const pg_reference = (req.body?.pg_reference ?? req.body?.pg_ref ?? req.body?.payment_reference ?? req.body?.reference ?? "").toString();
+    const qr_code_url = (req.body?.qr_code_url ?? req.body?.qrCodeUrl ?? null) || null;
 
-    if (!method || !pg_reference) {
-      return res.status(400).json({ error: "method and pg_reference are required" });
+    if (!method?.trim() || !pg_reference?.trim()) {
+      return res.status(400).json({
+        error: "method and pg_reference are required",
+        received_keys: Object.keys(req.body || {}),
+      });
     }
 
     // check if escrow exists

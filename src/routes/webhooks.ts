@@ -52,7 +52,7 @@ router.post("/payments", async (req: Request, res: Response) => {
 
         // update payment intent
         await db.query(
-          "UPDATE payment_intents SET status = 'paid', paid_at = NOW(), raw_payload = ?, method = ? WHERE id = ?",
+          "UPDATE payment_intents SET status = 'paid', paid_at = NOW(), raw_payload = ?, method = COALESCE(?, method) WHERE id = ?",
           [JSON.stringify(rawPayload), rawPayload.method || null, intent.id]
         );
 
