@@ -15,28 +15,61 @@ router.use(express.json());
 
 /**
  * POST /api/escrow
- * Body: { buyer_id, seller_id, amount, currency }
+ * Body: { amount: number, currency?: string, counterparty_id: string }
+ * Note: counterparty_id can be a user UUID or an email address. If email is provided, it will be resolved to the user's id.
  */
 router.post("/", authenticateJWT, async (req: AuthRequest, res: Response) => {
   try {
-    const { buyer_id, seller_id, amount, currency } = req.body;
+    const { amount, currency, counterparty_id } = req.body;
 
-    // validation
-    if (!buyer_id || !seller_id || !amount) {
-      return res.status(400).json({ error: "buyer_id, seller_id, and amount are required" });
+    // Use session user_id and user_role; fallback to JWT user (so it works without session cookie)
+    const user_id = req.session?.user_id || req.user?.id;
+    const user_role = req.session?.user_role || req.user?.role;
+
+    if (!user_id || !user_role) {
+      return res.status(401).json({ error: "User not logged in" });
+    }
+    if (amount == null || Number.isNaN(Number(amount)) || Number(amount) <= 0) {
+      return res.status(400).json({ error: "Valid amount is required" });
+    }
+    if (!counterparty_id || typeof counterparty_id !== "string") {
+      return res.status(400).json({ error: "counterparty_id is required" });
+    }
+    if (user_role !== "buyer" && user_role !== "seller") {
+      return res.status(403).json({ error: "Only buyers or sellers can create escrow" });
     }
 
-    if (req.user?.role !== "buyer" && req.user?.role !== "seller") {
-      return res.status(403).json({ error: "Only buyers or sellers can create escrow" });
+    // Resolve counterparty_id if email provided
+    let resolvedCounterpartyId: string | null = null;
+    if (counterparty_id.includes("@")) {
+      const [cpRows] = await db.query("SELECT id FROM users WHERE email = ?", [counterparty_id]);
+      const cps = cpRows as any[];
+      if (cps.length === 0) {
+        return res.status(404).json({ error: "Counterparty not found for the given email" });
+      }
+      resolvedCounterpartyId = cps[0].id as string;
+    } else {
+      // Assume it's already a UUID (or valid user id) as provided
+      resolvedCounterpartyId = counterparty_id;
+    }
+
+    // Assign buyer/seller based on role
+    let buyer_id, seller_id;
+    if (user_role === "buyer") {
+      buyer_id = user_id;
+      seller_id = resolvedCounterpartyId;
+    } else {
+      seller_id = user_id;
+      buyer_id = resolvedCounterpartyId;
     }
 
     // generate escrow ID
     const escrowId = uuidv4();
 
     await db.query(
-      `INSERT INTO escrow_transactions (id, buyer_id, seller_id, amount, currency, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'created', NOW(), NOW())`,
-      [escrowId, buyer_id, seller_id, amount, currency || "IDR"]
+      `INSERT INTO escrow_transactions (id, buyer_id, seller_id, amount, currency, status, created_at, updated_at, deadline_confirm)
+       VALUES (?, ?, ?, ?, ?, 'created', NOW(), NOW(), DATE_ADD(NOW(), INTERVAL 24 HOUR))`,
+      [escrowId, buyer_id, seller_id, Number(amount), currency || "IDR"]
     );
 
     // add audit log

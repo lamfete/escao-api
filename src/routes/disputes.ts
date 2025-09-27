@@ -4,6 +4,7 @@ import db from "../db.js";
 import { v4 as uuidv4 } from "uuid";
 import { authenticateJWT } from "../middleware/auth.js";
 import type { AuthRequest } from "../middleware/auth.js";
+import { requireKYCVerified } from "../middleware/kyc.js";
 
 const router = Router();
 
@@ -75,6 +76,7 @@ router.post("/:id/evidence", authenticateJWT, async (req: AuthRequest, res: Resp
  * Admin resolves dispute
  * Body: { decision, note }
  */
+
 router.post("/:id/resolve", authenticateJWT, async (req: AuthRequest, res: Response) => {
   try {
     const disputeId = req.params.id;
@@ -110,6 +112,7 @@ router.post("/:id/resolve", authenticateJWT, async (req: AuthRequest, res: Respo
 
     // If decision is favor_seller, check seller KYC status before releasing funds
     if (decision === "favor_seller") {
+      // Use KYC middleware logic directly
       const [sellerRows] = await db.query(
         "SELECT kyc_status FROM users WHERE id = ?",
         [dispute.seller_id]

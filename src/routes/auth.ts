@@ -106,21 +106,103 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // issue JWT
-    const token = jwt.sign(
+    // issue access token
+    const accessToken = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET as string,
-      { expiresIn: "1h" }
+      { expiresIn: "15m" }
     );
+
+    // issue refresh token (longer expiry)
+    const refreshToken = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET as string,
+      { expiresIn: "7d" }
+    );
+
+    // Store user_id and user_role in session
+    if (req.session) {
+      req.session.user_id = user.id;
+      req.session.user_role = user.role;
+    }
+
+    // Set refresh token in HTTP-only cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV !== "development", // true on Heroku
+      sameSite: "none", // required for cross-origin requests
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/", // optional; default "/"
+    });
 
     res.json({
       message: "Login successful",
       user: { id: user.id, email: user.email, role: user.role },
-      token,
+      accessToken,
     });
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/auth/refresh
+ * Body: none (uses refreshToken cookie)
+ */
+router.post("/refresh", async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+    if (!refreshToken) {
+      return res.status(401).json({ error: "Refresh token missing" });
+    }
+    // Verify refresh token
+    let payload;
+    try {
+      payload = jwt.verify(refreshToken, process.env.JWT_SECRET as string);
+    } catch (err) {
+      return res.status(401).json({ error: "Invalid or expired refresh token" });
+    }
+    // Issue new access token
+    const accessToken = jwt.sign(
+      { id: (payload as any).id, email: (payload as any).email, role: (payload as any).role },
+      process.env.JWT_SECRET as string,
+      { expiresIn: "15m" }
+    );
+    res.json({ accessToken });
+  } catch (err) {
+    console.error("Refresh token error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/auth/logout
+ * Clears refresh token cookie and destroys session
+ */
+router.post("/logout", async (req: Request, res: Response) => {
+  try {
+    // Clear the refresh token cookie (must match cookie attributes used when setting it)
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV !== "development",
+      sameSite: "none",
+      path: "/",
+    });
+
+    // Destroy session if present
+    if (req.session) {
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Session destroy error:", err);
+        }
+      });
+    }
+
+    return res.json({ message: "Logged out" });
+  } catch (err) {
+    console.error("Logout error:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

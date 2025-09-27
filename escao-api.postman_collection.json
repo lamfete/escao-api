@@ -1,0 +1,701 @@
+{
+	"info": {
+		"_postman_id": "822e631e-ad2c-4bab-b709-71cfaddfbd4c",
+		"name": "escao-api",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "1258390"
+	},
+	"item": [
+		{
+			"name": "2025",
+			"item": [
+				{
+					"name": "register",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"email\": \"seller@test.com\",\r\n  \"password\": \"StrongPass123\",\r\n  \"role\": \"seller\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/auth/register",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "login",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"email\": \"admin@test.com\",\r\n  \"password\": \"password123\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/auth/login",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"try {",
+									"  const json = pm.response.json();",
+									"  if (json && json.accessToken) {",
+									"    pm.collectionVariables.set('accessToken', json.accessToken);",
+									"  }",
+									"  if (json && json.user) {",
+									"    pm.collectionVariables.set('userId', json.user.id);",
+									"    pm.collectionVariables.set('userRole', json.user.role);",
+									"  }",
+									"} catch (e) { }"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "refresh",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/auth/refresh",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"refresh"
+							]
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"try {",
+									"  const json = pm.response.json();",
+									"  if (json && json.accessToken) {",
+									"    pm.collectionVariables.set('accessToken', json.accessToken);",
+									"  }",
+									"} catch (e) { }"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "users/me",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/users/me",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"me"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "escrow",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"amount\": 750000,\r\n  \"currency\": \"IDR\",\r\n  \"counterparty_id\": \"22222222-2222-2222-2222-222222222222\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/escrow",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "escrow/:id",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/escrow/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow",
+								"c9fe6822-46ee-4e7c-a4c4-333e67fc1f07"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "fund escrow",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"method\": \"bank_transfer\",\r\n  \"pg_reference\": \"TXN123456789\",\r\n  \"qr_code_url\": \"https://example.com/qr/123\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/escrow/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/fund",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow",
+								"c9fe6822-46ee-4e7c-a4c4-333e67fc1f07",
+								"fund"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ship",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"tracking_number\": \"EXP-987654321\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/escrow/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/ship",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow",
+								"c9fe6822-46ee-4e7c-a4c4-333e67fc1f07",
+								"ship"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "confirm",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/escrow/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/confirm",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow",
+								"c9fe6822-46ee-4e7c-a4c4-333e67fc1f07",
+								"confirm"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "create dispute",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/escrow/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/dispute",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow",
+								"c9fe6822-46ee-4e7c-a4c4-333e67fc1f07",
+								"dispute"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "evidence upload",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"file_url\": \"https://cdn.test/evidence_photo.png\",\r\n  \"note\": \"Item arrived with broken packaging\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/disputes/ddddddd1-dddd-dddd-dddd-ddddddddddd1/evidence",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"disputes",
+								"ddddddd1-dddd-dddd-dddd-ddddddddddd1",
+								"evidence"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "escrow cancel",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/escrow/aaaaaaa1-aaaa-aaaa-aaaa-aaaaaaaaaaa1/cancel",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow",
+								"aaaaaaa1-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+								"cancel"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "dispute resolve",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"decision\": \"favor_buyer\",\r\n  \"note\": \"Evidence shows item was defective. Buyer refunded.\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/disputes/ddddddd1-dddd-dddd-dddd-ddddddddddd1/resolve",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"disputes",
+								"ddddddd1-dddd-dddd-dddd-ddddddddddd1",
+								"resolve"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "payments",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "x-signature",
+								"value": "test-signature",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"event\": \"payment_succeeded\",\r\n  \"pg_ref\": \"PG12345\",\r\n  \"amount\": 7500000,\r\n  \"method\": \"QRIS\"\r\n}\r\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/webhooks/payments",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"webhooks",
+								"payments"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "payouts",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "x-signature",
+								"value": "test-signature",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"event\": \"payout_succeeded\",\r\n  \"pg_ref\": \"TXN123456789\",\r\n  \"status\": \"sent\",\r\n  \"amount\": 500000,\r\n  \"method\": \"BI-FAST\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/webhooks/payouts",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"webhooks",
+								"payouts"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "submit kyc (user)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"email\": \"buyer@test.com\",\r\n  \"password\": \"StrongPass123\"\r\n}"
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/users/kyc",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"kyc"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "verify kyc (admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"decision\": \"verified\",\r\n  \"note\": \"ID matched and clear\"\r\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/users/a37d3d83-226d-4a6d-b7e8-5194b8935198/kyc/verify",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"a37d3d83-226d-4a6d-b7e8-5194b8935198",
+								"kyc",
+								"verify"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "New Request",
+					"request": {
+						"method": "GET",
+						"header": []
+					},
+					"response": []
+				},
+				{
+					"name": "logout",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/auth/logout",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"logout"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "devURL",
+			"value": "http://localhost:4000"
+		},
+		{
+			"key": "prodURL",
+			"value": "https://esc-prod-api-fe527e8a26ab.herokuapp.com"
+		},
+		{
+			"key": "accessToken",
+			"value": ""
+		}
+	]
+}
