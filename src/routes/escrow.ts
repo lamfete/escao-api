@@ -97,6 +97,89 @@ router.post("/", authenticateJWT, async (req: AuthRequest, res: Response) => {
 });
 
 /**
+ * GET /api/escrow
+ * Returns escrows where the logged-in user is buyer or seller.
+ * Optional query params:
+ *   - status: string
+ *   - limit: number (default 20, max 100)
+ *   - offset: number (default 0)
+ *   - as: 'buyer' | 'seller' (optional filter to one side)
+ *   - user_id or email: only honored for admin users to query on behalf of someone
+ */
+router.get("/", authenticateJWT, async (req: AuthRequest, res: Response) => {
+  try {
+    // Base identity is the current token/session user
+    let effectiveUserId: string | undefined = req.user?.id || req.session?.user_id;
+    const requesterRole = req.user?.role || req.session?.user_role;
+
+    if (!effectiveUserId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const status = (req.query.status as string) || undefined;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+    const offset = parseInt(req.query.offset as string) || 0;
+    const as = (req.query.as as string) || undefined; // buyer | seller
+
+    // Admin can override target user via user_id or email
+    let adminOverrideUsed = false;
+    if (requesterRole === "admin") {
+      const targetUserId = (req.query.user_id as string) || undefined;
+      const targetEmail = (req.query.email as string) || undefined;
+      if (targetUserId) {
+        effectiveUserId = targetUserId;
+        adminOverrideUsed = true;
+      } else if (targetEmail) {
+        const [uRows] = await db.query("SELECT id FROM users WHERE email = ?", [targetEmail]);
+        const list = uRows as any[];
+        if (list.length > 0) {
+          effectiveUserId = list[0].id as string;
+          adminOverrideUsed = true;
+        } else {
+          return res.status(404).json({ error: "Target user not found for given email" });
+        }
+      }
+    }
+
+    // Build query
+    let sql = `SELECT e.id, e.amount, e.currency, e.status, e.created_at, e.updated_at,
+                      e.buyer_id, e.seller_id
+               FROM escrow_transactions e
+               WHERE `;
+    const params: any[] = [];
+
+    if (as === "buyer") {
+      sql += "e.buyer_id = ?";
+      params.push(effectiveUserId);
+    } else if (as === "seller") {
+      sql += "e.seller_id = ?";
+      params.push(effectiveUserId);
+    } else {
+      sql += "(e.buyer_id = ? OR e.seller_id = ?)";
+      params.push(effectiveUserId, effectiveUserId);
+    }
+
+    if (status) {
+      sql += " AND e.status = ?";
+      params.push(status);
+    }
+
+    sql += " ORDER BY e.created_at DESC LIMIT ? OFFSET ?";
+    params.push(limit, offset);
+
+    const [rows] = await db.query(sql, params);
+    return res.json({
+      escrows: rows,
+      paging: { limit, offset, status: status || null },
+      filter: { user_id: effectiveUserId, as: as || null, adminOverrideUsed }
+    });
+  } catch (err) {
+    console.error("List my escrows error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
  * GET /api/escrow/:id
  * Returns escrow transaction details
  */

@@ -658,6 +658,94 @@
 						}
 					},
 					"response": []
+				},
+				{
+					"name": "my escrows",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/escrow?limit=20&offset=0&status=&as=",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								},
+								{
+									"key": "status",
+									"value": ""
+								},
+								{
+									"key": "as",
+									"value": ""
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "my escrows (admin override)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/escrow?limit=20&offset=0&user_id={{userId}}",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								},
+								{
+									"key": "user_id",
+									"value": "{{userId}}"
+								}
+							]
+						}
+					},
+					"response": []
 				}
 			]
 		}
