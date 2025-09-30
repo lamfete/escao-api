@@ -38,3 +38,6 @@ Thumbs.db
 
 # Database configuration
 src/db.ts
+
+# Uploaded files
+uploads/

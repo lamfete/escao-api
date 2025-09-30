@@ -24,3 +24,13 @@ export const requireKYCVerified = async (req: AuthRequest, res: Response, next: 
     res.status(500).json({ error: "Internal server error" });
   }
 };
+
+/**
+ * Middleware to enforce admin role
+ */
+export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+};

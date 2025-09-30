@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { authenticateJWT } from "../middleware/auth.js";
 import type { AuthRequest } from "../middleware/auth.js";
 import { requireKYCVerified } from "../middleware/kyc.js";
+import multer from "multer";
 
 
 const router = Router();
@@ -297,16 +298,45 @@ router.post("/:id/fund", authenticateJWT, async (req: AuthRequest, res: Response
  * Body: { tracking_number }
  * Marks escrow as shipped (seller confirms shipping)
  */
-router.post("/:id/ship", authenticateJWT, async (req: AuthRequest, res: Response) => {
+const upload = multer({ storage: multer.memoryStorage() });
+
+router.post("/:id/ship", authenticateJWT, upload.any(), async (req: AuthRequest, res: Response) => {
   try {
     const escrowId = req.params.id;
     console.log("Ship request body:", req.body);
+    // Normalize first file (if any) for logging/audit
+    let firstFile: Express.Multer.File | null = null;
+    if (req.files) {
+      const fl = req.files as unknown;
+      if (Array.isArray(fl)) {
+        firstFile = (fl as Express.Multer.File[])[0] ?? null;
+      } else if (fl && typeof fl === "object") {
+        const dict = fl as Record<string, Express.Multer.File[]>;
+        const k = Object.keys(dict)[0];
+        if (k) firstFile = dict[k]?.[0] ?? null;
+      }
+    }
+    if (firstFile) {
+      console.log("Ship first file:", {
+        fieldname: firstFile.fieldname,
+        originalname: firstFile.originalname,
+        mimetype: firstFile.mimetype,
+        size: firstFile.size,
+      });
+    }
     
     if (!req.body) {
       return res.status(400).json({ error: "No request body received" });
     }
     
-    const { tracking_number } = req.body;
+    // Accept alias fields for tracking/shipping receipt
+    const tracking_number = (req.body?.tracking_number
+      ?? req.body?.tracking_no
+      ?? req.body?.trackingNo
+      ?? req.body?.shipping_receipt
+      ?? req.body?.shipping_receipt_number
+      ?? req.body?.receipt
+      ?? "").toString();
 
     console.log("Current user role:", req.user?.role);
     
@@ -328,9 +358,9 @@ router.post("/:id/ship", authenticateJWT, async (req: AuthRequest, res: Response
       return res.status(403).json({ error: "Seller is not KYC verified" });
     }
 
-    // check escrow
+    // check escrow and verify the caller is the seller of this escrow
     const [escrowRows] = await db.query(
-      "SELECT id, status FROM escrow_transactions WHERE id = ?",
+      "SELECT id, status, seller_id FROM escrow_transactions WHERE id = ?",
       [escrowId]
     );
     const escrows = escrowRows as any[];
@@ -340,6 +370,11 @@ router.post("/:id/ship", authenticateJWT, async (req: AuthRequest, res: Response
     }
 
     const escrow = escrows[0];
+
+    // seller must be the seller of this escrow
+    if (escrow.seller_id !== req.user?.id) {
+      return res.status(403).json({ error: "You are not the seller of this escrow" });
+    }
     console.log("Current escrow status for shipping:", escrow.status);
 
     if (escrow.status !== "funded") {
@@ -358,8 +393,24 @@ router.post("/:id/ship", authenticateJWT, async (req: AuthRequest, res: Response
     // log audit
     await db.query(
       `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
-       VALUES (?, ?, 'ship', 'escrow_transactions', ?, JSON_OBJECT('tracking_number', ?), NOW())`,
-      [uuidv4(), req.user?.id, escrowId, tracking_number || null]
+       VALUES (
+         ?, ?, 'ship', 'escrow_transactions', ?,
+         JSON_OBJECT(
+           'tracking_number', ?,
+           'file', JSON_OBJECT('field', ?, 'name', ?, 'type', ?, 'size', ?)
+         ),
+         NOW()
+       )`,
+      [
+        uuidv4(),
+        req.user?.id,
+        escrowId,
+        tracking_number || null,
+        firstFile?.fieldname || null,
+        firstFile?.originalname || null,
+        firstFile?.mimetype || null,
+        firstFile?.size || null,
+      ]
     );
 
     res.json({

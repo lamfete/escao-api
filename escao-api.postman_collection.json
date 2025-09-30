@@ -295,10 +295,17 @@
 							]
 						},
 						"method": "POST",
-						"header": [],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"description": "Seller confirms shipment. Requires: role=seller, KYC verified.\nAccepts JSON, x-www-form-urlencoded, or multipart/form-data.\nAlias fields: tracking_number | tracking_no | shipping_receipt | shipping_receipt_number | receipt.\nOptional file fields: media, file.",
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n  \"tracking_number\": \"EXP-987654321\"\r\n}",
+							"raw": "{\r\n  \"tracking_number\": \"JNE123\",\r\n  \"tracking_no\": \"JNE123\",\r\n  \"shipping_receipt\": \"JNE123\"\r\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -567,13 +574,27 @@
 					"name": "submit kyc (user)",
 					"request": {
 						"auth": {
-							"type": "noauth"
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
 						},
 						"method": "POST",
-						"header": [],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"description": "Submit KYC. Accepts JSON or multipart/form-data.\nFields: full_name, id_number, document (file) or document_url, selfie (file) or selfie_url.\nIf files are uploaded, server persists under /uploads/kyc and returns absolute URLs.",
 						"body": {
 							"mode": "raw",
-							"raw": "{\r\n  \"email\": \"buyer@test.com\",\r\n  \"password\": \"StrongPass123\"\r\n}"
+							"raw": "{\r\n  \"full_name\": \"Seller One\",\r\n  \"id_number\": \"ID123456\",\r\n  \"document_url\": \"https://cdn.example/id.jpg\",\r\n  \"selfie_url\": \"https://cdn.example/selfie.jpg\"\r\n}"
 						},
 						"url": {
 							"raw": "{{prodURL}}/api/users/kyc",
@@ -584,6 +605,221 @@
 								"api",
 								"users",
 								"kyc"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "submit kyc (multipart)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "multipart/form-data",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "full_name", "value": "Seller One", "type": "text" },
+								{ "key": "id_number", "value": "ID123456", "type": "text" },
+								{ "key": "document", "type": "file", "src": [] },
+								{ "key": "selfie", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/users/kyc",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"kyc"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "my kyc status",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/users/me/kyc",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"me",
+								"kyc"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "kyc pending (admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/users/kyc/pending?role=seller&email=&limit=20&offset=0",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"kyc",
+								"pending"
+							],
+							"query": [
+								{ "key": "role", "value": "seller" },
+								{ "key": "email", "value": "" },
+								{ "key": "limit", "value": "20" },
+								{ "key": "offset", "value": "0" }
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "lookup user by email (admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/users?email={{targetUserEmail}}",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users"
+							],
+							"query": [
+								{
+									"key": "email",
+									"value": "{{targetUserEmail}}"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "view user kyc (admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"description": "Admin or the user can view KYC submission details for a specific user.",
+						"url": {
+							"raw": "{{prodURL}}/api/users/{{targetUserId}}/kyc",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"{{targetUserId}}",
+								"kyc"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "verify kyc (admin body)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"decision\": \"verified\",\r\n  \"email\": \"{{targetUserEmail}}\"\r\n}"
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/users/kyc/verify",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"kyc",
+								"verify"
 							]
 						}
 					},
@@ -603,7 +839,14 @@
 							]
 						},
 						"method": "POST",
-						"header": [],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"description": "Admin verifies a user's KYC. Requires admin bearer token.\nBody: { decision: 'verified' | 'rejected', note?: string }",
 						"body": {
 							"mode": "raw",
 							"raw": "{\r\n  \"decision\": \"verified\",\r\n  \"note\": \"ID matched and clear\"\r\n}",
@@ -614,14 +857,55 @@
 							}
 						},
 						"url": {
-							"raw": "{{prodURL}}/api/users/a37d3d83-226d-4a6d-b7e8-5194b8935198/kyc/verify",
+							"raw": "{{prodURL}}/api/users/{{targetUserId}}/kyc/verify",
 							"host": [
 								"{{prodURL}}"
 							],
 							"path": [
 								"api",
 								"users",
-								"a37d3d83-226d-4a6d-b7e8-5194b8935198",
+								"{{targetUserId}}",
+								"kyc",
+								"verify"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "reject kyc (admin)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"decision\": \"rejected\",\r\n  \"note\": \"ID unreadable\"\r\n}"
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/users/{{targetUserId}}/kyc/verify",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"users",
+								"{{targetUserId}}",
 								"kyc",
 								"verify"
 							]
@@ -783,6 +1067,14 @@
 		},
 		{
 			"key": "accessToken",
+			"value": ""
+		},
+		{
+			"key": "targetUserId",
+			"value": "a37d3d83-226d-4a6d-b7e8-5194b8935198"
+		},
+		{
+			"key": "targetUserEmail",
 			"value": ""
 		}
 	]

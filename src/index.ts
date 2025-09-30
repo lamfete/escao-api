@@ -6,8 +6,10 @@ import escrowRoutes from "./routes/escrow.js";
 import webhookRoutes from "./routes/webhooks.js";
 import usersRoutes from "./routes/users.js";
 import disputesRoutes from "./routes/disputes.js";
+import adminRoutes from "./routes/admin.js";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import path from "path";
 
 declare module "express-session" {
   interface SessionData {
@@ -44,6 +46,9 @@ app.use(cors(corsOptions));
 // Preflight handling for all routes (Express 5 + path-to-regexp v6 safe)
 app.options(/.*/, cors(corsOptions));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+// Serve uploaded files
+app.use("/uploads", express.static(path.resolve("./uploads")));
 app.use(session({
   secret: process.env.JWT_SECRET || "default_secret",
   resave: false,
@@ -69,6 +74,7 @@ app.use("/api/escrow", escrowRoutes);
 app.use("/webhooks", webhookRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/disputes", disputesRoutes);
+app.use("/api/admin", adminRoutes);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
