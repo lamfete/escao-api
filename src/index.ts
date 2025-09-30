@@ -48,7 +48,8 @@ app.options(/.*/, cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // Serve uploaded files
-app.use("/uploads", express.static(path.resolve("./uploads")));
+const uploadsRoot = path.resolve(process.env.UPLOADS_ROOT || "./uploads");
+app.use("/uploads", express.static(uploadsRoot));
 app.use(session({
   secret: process.env.JWT_SECRET || "default_secret",
   resave: false,

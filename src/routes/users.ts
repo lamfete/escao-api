@@ -147,7 +147,7 @@ router.get("/", authenticateJWT, async (req: AuthRequest, res: Response) => {
   }
 });
 
-const uploadDir = path.resolve("./uploads/kyc");
+const uploadDir = path.resolve(process.env.UPLOADS_ROOT || "./uploads", "kyc");
 fs.mkdirSync(uploadDir, { recursive: true });
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
