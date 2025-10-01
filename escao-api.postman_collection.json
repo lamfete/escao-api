@@ -358,6 +358,34 @@
 					"response": []
 				},
 				{
+					"name": "upload receipt (buyer)",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{ "key": "token", "value": "{{accessToken}}", "type": "string" }
+							]
+						},
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "multipart/form-data", "type": "text" }
+						],
+						"description": "Buyer uploads proof of receipt. Accepts multipart (receipt|proof|file|media) or JSON with file_url. Uses local storage in production via UPLOADS_ROOT.",
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "receipt", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{prodURL}}/api/escrow/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/receipt",
+							"host": [ "{{prodURL}}" ],
+							"path": [ "api", "escrow", "c9fe6822-46ee-4e7c-a4c4-333e67fc1f07", "receipt" ]
+						}
+					},
+					"response": []
+				},
+				{
 					"name": "create dispute",
 					"request": {
 						"auth": {

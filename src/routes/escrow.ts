@@ -7,6 +7,8 @@ import { authenticateJWT } from "../middleware/auth.js";
 import type { AuthRequest } from "../middleware/auth.js";
 import { requireKYCVerified } from "../middleware/kyc.js";
 import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 
 const router = Router();
@@ -420,6 +422,100 @@ router.post("/:id/ship", authenticateJWT, upload.any(), async (req: AuthRequest,
   } catch (err) {
     console.error("Ship escrow error:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/escrow/:id/receipt
+ * Buyer uploads proof of receipt (file or URL). This does not change status; use /:id/confirm to confirm receipt.
+ * Accepts:
+ *  - multipart/form-data with a file field: receipt | proof | file | media
+ *  - JSON/x-www-form-urlencoded with file_url (absolute URL)
+ */
+// Ensure receipts directory exists
+const receiptsDir = path.resolve(process.env.UPLOADS_ROOT || "./uploads", "receipts");
+fs.mkdirSync(receiptsDir, { recursive: true });
+const receiptStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, receiptsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || "";
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+const receiptUpload = multer({ storage: receiptStorage });
+
+router.post("/:id/receipt", authenticateJWT, receiptUpload.any(), async (req: AuthRequest, res: Response) => {
+  try {
+    const escrowId = req.params.id;
+
+    // only buyers can upload receipt
+    if (req.user?.role !== "buyer") {
+      return res.status(403).json({ error: "Only buyers can upload receipt proof" });
+    }
+
+    // fetch escrow and verify ownership and state
+    const [escrowRows] = await db.query(
+      "SELECT id, status, buyer_id FROM escrow_transactions WHERE id = ?",
+      [escrowId]
+    );
+    const escrows = escrowRows as any[];
+    if (escrows.length === 0) {
+      return res.status(404).json({ error: "Escrow not found" });
+    }
+    const escrow = escrows[0];
+    if (escrow.buyer_id !== req.user?.id) {
+      return res.status(403).json({ error: "You are not the buyer of this escrow" });
+    }
+    if (escrow.status !== "shipped") {
+      return res.status(400).json({ error: "Escrow must be in 'shipped' state to upload receipt" });
+    }
+
+    // pick first file if present
+    let firstFile: Express.Multer.File | undefined;
+    if (Array.isArray(req.files) && req.files.length > 0) {
+      // try to prefer specific fieldnames if present
+      const preferred = (req.files as Express.Multer.File[]).find(f => ["receipt", "proof", "file", "media"].includes(f.fieldname));
+      firstFile = preferred || (req.files as Express.Multer.File[])[0];
+    }
+
+    // derive URL
+    const baseUrl = process.env.BASE_URL || "";
+    const receipt_url = firstFile
+      ? `${baseUrl}/uploads/receipts/${path.basename(firstFile.path)}`
+      : ((req.body as any)?.file_url as string | undefined);
+
+    if (!receipt_url) {
+      return res.status(400).json({ error: "Provide a receipt file (multipart) or file_url" });
+    }
+
+    // audit log only (no schema changes)
+    await db.query(
+      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (
+         ?, ?, 'upload_receipt', 'escrow_transactions', ?,
+         JSON_OBJECT('receipt_url', ?, 'file', JSON_OBJECT('field', ?, 'name', ?, 'type', ?, 'size', ?)),
+         NOW()
+       )`,
+      [
+        uuidv4(),
+        req.user?.id,
+        escrowId,
+        receipt_url,
+        firstFile?.fieldname || null,
+        firstFile?.originalname || null,
+        firstFile?.mimetype || null,
+        firstFile?.size || null,
+      ]
+    );
+
+    return res.status(201).json({
+      message: "Receipt uploaded successfully",
+      receipt_url,
+      escrow: { id: escrowId, status: escrow.status }
+    });
+  } catch (err) {
+    console.error("Upload receipt error:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
