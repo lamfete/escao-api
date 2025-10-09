@@ -61,3 +61,80 @@ router.get("/kyc", authenticateJWT, requireAdmin, async (req: AuthRequest, res: 
 });
 
 export default router;
+ 
+/**
+ * GET /api/admin/escrows
+ * Admin-only: list escrow transactions with optional filters
+ * Query params:
+ *  - status: filter by escrow status
+ *  - buyer: filter by buyer email substring
+ *  - seller: filter by seller email substring
+ *  - created_from: ISO date string (inclusive)
+ *  - created_to: ISO date string (inclusive)
+ *  - limit: number (default 20, max 100)
+ *  - offset: number (default 0)
+ *  - sort: '-created' | 'created' | '-updated' | 'updated' (default '-created')
+ */
+router.get("/escrows", authenticateJWT, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const status = ((req.query.status as string) || "").trim();
+    const buyer = ((req.query.buyer as string) || "").trim();
+    const seller = ((req.query.seller as string) || "").trim();
+    const createdFrom = ((req.query.created_from as string) || "").trim();
+    const createdTo = ((req.query.created_to as string) || "").trim();
+    const limit = Math.min(parseInt((req.query.limit as string) || "20", 10), 100);
+    const offset = parseInt((req.query.offset as string) || "0", 10);
+    const sort = ((req.query.sort as string) || "-created").toLowerCase();
+
+    let orderBy = "e.created_at DESC";
+    if (sort === "created") orderBy = "e.created_at ASC";
+    else if (sort === "-updated") orderBy = "e.updated_at DESC";
+    else if (sort === "updated") orderBy = "e.updated_at ASC";
+
+    let sql = `
+      SELECT 
+        e.id, e.amount, e.currency, e.status, e.created_at, e.updated_at,
+        e.buyer_id, b.email AS buyer_email,
+        e.seller_id, s.email AS seller_email
+      FROM escrow_transactions e
+      LEFT JOIN users b ON b.id = e.buyer_id
+      LEFT JOIN users s ON s.id = e.seller_id
+      WHERE 1=1`;
+
+    const params: any[] = [];
+
+    if (status) {
+      sql += " AND e.status = ?";
+      params.push(status);
+    }
+    if (buyer) {
+      sql += " AND b.email LIKE ?";
+      params.push(`%${buyer}%`);
+    }
+    if (seller) {
+      sql += " AND s.email LIKE ?";
+      params.push(`%${seller}%`);
+    }
+    if (createdFrom) {
+      sql += " AND e.created_at >= ?";
+      params.push(createdFrom);
+    }
+    if (createdTo) {
+      sql += " AND e.created_at <= ?";
+      params.push(createdTo);
+    }
+
+    sql += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
+    const [rows] = await db.query(sql, params);
+    return res.json({
+      escrows: rows,
+      paging: { limit, offset },
+      filters: { status: status || null, buyer: buyer || null, seller: seller || null, created_from: createdFrom || null, created_to: createdTo || null, sort }
+    });
+  } catch (err) {
+    console.error("Admin list escrows error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});

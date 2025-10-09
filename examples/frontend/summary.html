@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Escrow Summary Demo</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 20px; }
+      .container { max-width: 720px; margin: 0 auto; }
+      .toolbar { display:flex; gap:8px; align-items:center; margin-bottom:16px; }
+      button { padding: 8px 12px; cursor: pointer; }
+      pre { background:#f6f8fa; padding:12px; border-radius:6px; overflow:auto; }
+      label { display:block; margin:8px 0 4px; }
+      input[type="text"] { width:100%; padding:8px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="toolbar">
+        <button id="backBtn" type="button">← Back</button>
+        <h2 style="margin:0 0 0 8px;">Escrow Summary</h2>
+      </div>
+
+      <label for="escrowId">Escrow ID</label>
+      <input id="escrowId" type="text" placeholder="Enter escrow UUID" />
+      <div style="margin-top:8px;">
+        <button id="loadBtn" type="button">Load Summary</button>
+      </div>
+
+      <h3>Response</h3>
+      <pre id="output">(no data)</pre>
+    </div>
+    <script>
+      const backBtn = document.getElementById('backBtn');
+      backBtn.addEventListener('click', () => {
+        if (document.referrer) {
+          history.back();
+        } else {
+          // Fallback: navigate to a root or previous page if no history
+          window.location.href = '/';
+        }
+      });
+
+      const loadBtn = document.getElementById('loadBtn');
+      const output = document.getElementById('output');
+
+      async function loadSummary() {
+        const id = document.getElementById('escrowId').value.trim();
+        if (!id) {
+          alert('Enter an escrow ID');
+          return;
+        }
+        try {
+          // Adjust base URL as needed; assumes same origin dev proxy or CORS configured
+          const res = await fetch(`/api/escrow/${encodeURIComponent(id)}/summary`, {
+            credentials: 'include'
+          });
+          const data = await res.json();
+          output.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          output.textContent = 'Error: ' + e.message;
+        }
+      }
+
+      loadBtn.addEventListener('click', loadSummary);
+    </script>
+  </body>
+</html>

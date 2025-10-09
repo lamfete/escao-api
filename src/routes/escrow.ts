@@ -192,6 +192,8 @@ router.get("/:id", authenticateJWT, async (req: AuthRequest, res: Response) => {
 
     const [rows] = await db.query(
       `SELECT e.id, e.amount, e.currency, e.status, e.created_at, e.updated_at,
+        e.seller_proof_url, e.seller_receipt_number, e.buyer_proof_url,
+        e.pg_reference,
               b.id AS buyer_id, b.email AS buyer_email,
               s.id AS seller_id, s.email AS seller_email
        FROM escrow_transactions e
@@ -214,6 +216,115 @@ router.get("/:id", authenticateJWT, async (req: AuthRequest, res: Response) => {
   }
 });
 
+/**
+ * GET /api/escrow/:id/summary
+ * Returns payment info and proofs (seller delivery, buyer receipt) for the escrow
+ */
+router.get("/:id/summary", authenticateJWT, async (req: AuthRequest, res: Response) => {
+  try {
+    const escrowId = req.params.id;
+
+    // Fetch escrow to validate existence and authorization (buyer/seller or admin)
+    const [escrowRows] = await db.query(
+      `SELECT e.id, e.buyer_id, e.seller_id, e.seller_proof_url, e.seller_receipt_number, e.buyer_proof_url,
+              b.email AS buyer_email, s.email AS seller_email
+       FROM escrow_transactions e
+       LEFT JOIN users b ON e.buyer_id = b.id
+       LEFT JOIN users s ON e.seller_id = s.id
+       WHERE e.id = ?`,
+      [escrowId]
+    );
+    const escrows = escrowRows as any[];
+    if (escrows.length === 0) {
+      return res.status(404).json({ error: "Escrow not found" });
+    }
+    const escrow = escrows[0];
+
+    // Authorization: admin or party to the escrow
+    if (req.user?.role !== "admin" && req.user?.id !== escrow.buyer_id && req.user?.id !== escrow.seller_id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    // Latest payment intent
+    const [piRows] = await db.query(
+      `SELECT method, pg_reference, status, paid_at
+       FROM payment_intents
+       WHERE escrow_id = ?
+       ORDER BY paid_at DESC, id DESC
+       LIMIT 1`,
+      [escrowId]
+    );
+    const payment = (piRows as any[])[0] || null;
+
+    // Helper to parse JSON metadata safely
+    const parseMeta = (val: any) => {
+      if (!val) return null;
+      if (typeof val === "string") {
+        try { return JSON.parse(val); } catch { return null; }
+      }
+      if (typeof val === "object") return val;
+      return null;
+    };
+
+    // Seller proof: last 'ship' audit for this escrow
+    const [shipRows] = await db.query(
+      `SELECT metadata FROM audit_logs
+       WHERE entity = 'escrow_transactions' AND entity_id = ? AND action = 'ship'
+       ORDER BY created_at DESC LIMIT 1`,
+      [escrowId]
+    );
+    const shipMeta = parseMeta((shipRows as any[])[0]?.metadata);
+    const seller_proof = shipMeta
+      ? {
+          tracking_number: shipMeta.tracking_number || escrow.seller_receipt_number || null,
+          seller_proof_url: escrow.seller_proof_url || (shipMeta.file ? (shipMeta.file.url || null) : null),
+          file: shipMeta.file
+            ? {
+                field: shipMeta.file.field || null,
+                name: shipMeta.file.name || null,
+                type: shipMeta.file.type || null,
+                size: shipMeta.file.size || null,
+                url: shipMeta.file.url || null
+              }
+            : null,
+        }
+      : null;
+
+    // Buyer receipt: last 'upload_receipt' audit
+    const [rcpRows] = await db.query(
+      `SELECT metadata FROM audit_logs
+       WHERE entity = 'escrow_transactions' AND entity_id = ? AND action = 'upload_receipt'
+       ORDER BY created_at DESC LIMIT 1`,
+      [escrowId]
+    );
+    const rcpMeta = parseMeta((rcpRows as any[])[0]?.metadata);
+    const buyer_receipt = rcpMeta
+      ? {
+          receipt_url: rcpMeta.receipt_url || null,
+          file: rcpMeta.file
+            ? {
+                field: rcpMeta.file.field || null,
+                name: rcpMeta.file.name || null,
+                type: rcpMeta.file.type || null,
+                size: rcpMeta.file.size || null,
+              }
+            : null,
+        }
+      : null;
+
+    return res.json({
+      escrow_id: escrowId,
+      buyer_email: escrow.buyer_email || null,
+      seller_email: escrow.seller_email || null,
+      payment,
+      seller_proof,
+      buyer_receipt,
+    });
+  } catch (err) {
+    console.error("Escrow summary error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 /**
  * POST /api/escrow/:id/fund
  * Body: { method, pg_reference, qr_code_url }
@@ -298,11 +409,21 @@ router.post("/:id/fund", authenticateJWT, async (req: AuthRequest, res: Response
 /**
  * POST /api/escrow/:id/ship
  * Body: { tracking_number }
- * Marks escrow as shipped (seller confirms shipping)
+ * Marks escrow as shipped (seller confirms shipping) and stores optional proof file.
  */
-const upload = multer({ storage: multer.memoryStorage() });
+// Ensure shipping directory exists
+const shippingDir = path.resolve(process.env.UPLOADS_ROOT || "./uploads", "shipping");
+fs.mkdirSync(shippingDir, { recursive: true });
+const shippingStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, shippingDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || "";
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+const shippingUpload = multer({ storage: shippingStorage });
 
-router.post("/:id/ship", authenticateJWT, upload.any(), async (req: AuthRequest, res: Response) => {
+router.post("/:id/ship", authenticateJWT, shippingUpload.any(), async (req: AuthRequest, res: Response) => {
   try {
     const escrowId = req.params.id;
     console.log("Ship request body:", req.body);
@@ -339,6 +460,8 @@ router.post("/:id/ship", authenticateJWT, upload.any(), async (req: AuthRequest,
       ?? req.body?.shipping_receipt_number
       ?? req.body?.receipt
       ?? "").toString();
+    const baseUrl = process.env.BASE_URL || "";
+    const seller_proof_url = firstFile ? `${baseUrl}/uploads/shipping/${path.basename((firstFile as any).path)}` : null;
 
     console.log("Current user role:", req.user?.role);
     
@@ -386,10 +509,10 @@ router.post("/:id/ship", authenticateJWT, upload.any(), async (req: AuthRequest,
       });
     }
 
-    // update escrow status
+    // update escrow status and persist seller proof + receipt number (do not overwrite if not provided)
     await db.query(
-      "UPDATE escrow_transactions SET status = 'shipped', updated_at = NOW() WHERE id = ?",
-      [escrowId]
+      "UPDATE escrow_transactions SET status = 'shipped', seller_proof_url = COALESCE(?, seller_proof_url), seller_receipt_number = COALESCE(?, seller_receipt_number), updated_at = NOW() WHERE id = ?",
+      [seller_proof_url, tracking_number || null, escrowId]
     );
 
     // log audit
@@ -399,7 +522,7 @@ router.post("/:id/ship", authenticateJWT, upload.any(), async (req: AuthRequest,
          ?, ?, 'ship', 'escrow_transactions', ?,
          JSON_OBJECT(
            'tracking_number', ?,
-           'file', JSON_OBJECT('field', ?, 'name', ?, 'type', ?, 'size', ?)
+           'file', JSON_OBJECT('field', ?, 'name', ?, 'type', ?, 'size', ?, 'url', ?)
          ),
          NOW()
        )`,
@@ -412,12 +535,13 @@ router.post("/:id/ship", authenticateJWT, upload.any(), async (req: AuthRequest,
         firstFile?.originalname || null,
         firstFile?.mimetype || null,
         firstFile?.size || null,
+        seller_proof_url,
       ]
     );
 
     res.json({
       message: "Escrow marked as shipped",
-      escrow: { id: escrowId, status: "shipped", tracking_number: tracking_number || null }
+      escrow: { id: escrowId, status: "shipped", tracking_number: tracking_number || null, seller_proof_url: seller_proof_url }
     });
   } catch (err) {
     console.error("Ship escrow error:", err);
@@ -488,7 +612,13 @@ router.post("/:id/receipt", authenticateJWT, receiptUpload.any(), async (req: Au
       return res.status(400).json({ error: "Provide a receipt file (multipart) or file_url" });
     }
 
-    // audit log only (no schema changes)
+    // persist buyer proof URL on escrow
+    await db.query(
+      "UPDATE escrow_transactions SET buyer_proof_url = COALESCE(?, buyer_proof_url), updated_at = NOW() WHERE id = ?",
+      [receipt_url, escrowId]
+    );
+
+    // audit log
     await db.query(
       `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
        VALUES (
@@ -511,7 +641,7 @@ router.post("/:id/receipt", authenticateJWT, receiptUpload.any(), async (req: Au
     return res.status(201).json({
       message: "Receipt uploaded successfully",
       receipt_url,
-      escrow: { id: escrowId, status: escrow.status }
+      escrow: { id: escrowId, status: escrow.status, buyer_proof_url: receipt_url }
     });
   } catch (err) {
     console.error("Upload receipt error:", err);
@@ -534,7 +664,7 @@ router.post("/:id/confirm", authenticateJWT, async (req: AuthRequest, res: Respo
 
     // check escrow
     const [escrowRows] = await db.query(
-      "SELECT id, status FROM escrow_transactions WHERE id = ?",
+      "SELECT id, status, buyer_id FROM escrow_transactions WHERE id = ?",
       [escrowId]
     );
     const escrows = escrowRows as any[];
@@ -545,8 +675,13 @@ router.post("/:id/confirm", authenticateJWT, async (req: AuthRequest, res: Respo
 
     const escrow = escrows[0];
 
+    // Ensure the caller is the buyer of this escrow
+    if (escrow.buyer_id !== req.user?.id) {
+      return res.status(403).json({ error: "You are not the buyer of this escrow" });
+    }
+
     if (escrow.status !== "shipped") {
-      return res.status(400).json({ error: "Escrow must be in 'shipped' state before confirming" });
+      return res.status(400).json({ error: "Escrow must be in 'shipped' state before confirming", current_status: escrow.status });
     }
 
     // update escrow status

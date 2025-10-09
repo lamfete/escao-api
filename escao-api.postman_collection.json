@@ -243,6 +243,36 @@
 					"response": []
 				},
 				{
+					"name": "escrow summary",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{accessToken}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/escrow/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/summary",
+							"host": [
+								"{{prodURL}}"
+							],
+							"path": [
+								"api",
+								"escrow",
+								"c9fe6822-46ee-4e7c-a4c4-333e67fc1f07",
+								"summary"
+							]
+						}
+					},
+					"response": []
+				},
+				{
 					"name": "fund escrow",
 					"request": {
 						"auth": {
@@ -777,6 +807,33 @@
 									"key": "email",
 									"value": "{{targetUserEmail}}"
 								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "admin escrows",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{ "key": "token", "value": "{{accessToken}}", "type": "string" }
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/admin/escrows?status=&buyer=&seller=&limit=20&offset=0&sort=-created",
+							"host": ["{{prodURL}}"],
+							"path": ["api","admin","escrows"],
+							"query": [
+								{ "key": "status", "value": "" },
+								{ "key": "buyer", "value": "" },
+								{ "key": "seller", "value": "" },
+								{ "key": "limit", "value": "20" },
+								{ "key": "offset", "value": "0" },
+								{ "key": "sort", "value": "-created" }
 							]
 						}
 					},
