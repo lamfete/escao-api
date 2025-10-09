@@ -29,14 +29,17 @@ app.set("trust proxy", 1);
 
 // CORS configuration driven by env var CORS_ORIGINS (comma-separated)
 // Default includes prod FE and common Vite dev ports (5173, 5174)
-const originsEnv = process.env.CORS_ORIGINS || "https://esc-prod-fe-6e536405a054.herokuapp.com,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174";
-const allowedOrigins = originsEnv.split(",").map(o => o.trim()).filter(Boolean);
+// Note: normalize origins to ignore trailing slashes and case
+const originsEnv = process.env.CORS_ORIGINS || "https://esc-prod-fe-6e536405a054.herokuapp.com/,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174";
+const normalizeOrigin = (o: string) => o.replace(/\/+$/, "").toLowerCase();
+const allowedOrigins = originsEnv.split(",").map(o => normalizeOrigin(o.trim())).filter(Boolean);
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+    const normalized = normalizeOrigin(origin);
+    if (allowedOrigins.includes(normalized)) return callback(null, true);
     return callback(new Error(`CORS: Origin not allowed: ${origin}`));
   },
   credentials: true,
