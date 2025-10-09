@@ -24,6 +24,8 @@ dotenv.config();
 const app = express();
 
 app.use(cookieParser());
+// Trust Heroku/Proxy to ensure correct handling of secure cookies and protocol
+app.set("trust proxy", 1);
 
 // CORS configuration driven by env var CORS_ORIGINS (comma-separated)
 // Default includes prod FE and common Vite dev ports (5173, 5174)
@@ -38,8 +40,9 @@ const corsOptions: cors.CorsOptions = {
     return callback(new Error(`CORS: Origin not allowed: ${origin}`));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  // Do not fix allowedHeaders so cors reflects back request headers automatically
+  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
