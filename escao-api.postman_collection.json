@@ -415,6 +415,21 @@
 					},
 					"response": []
 				},
+						{
+							"name": "release (buyer)",
+							"request": {
+								"auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}", "type": "string" } ] },
+								"method": "POST",
+								"header": [],
+								"description": "Buyer releases funds to seller. Requires: role=buyer. Escrow must be 'confirmed'. Seller must be KYC verified.",
+								"url": {
+									"raw": "{{prodURL}}/api/escrow/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/release",
+									"host": [ "{{prodURL}}" ],
+									"path": [ "api", "escrow", "c9fe6822-46ee-4e7c-a4c4-333e67fc1f07", "release" ]
+								}
+							},
+							"response": []
+						},
 				{
 					"name": "create dispute",
 					"request": {
@@ -434,6 +449,67 @@
 								"c9fe6822-46ee-4e7c-a4c4-333e67fc1f07",
 								"dispute"
 							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "admin complete",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}", "type": "string" } ] },
+						"method": "POST",
+						"header": [],
+						"description": "Admin completes a released escrow → status becomes 'completed'.",
+						"url": {
+							"raw": "{{prodURL}}/api/admin/escrows/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/complete",
+							"host": [ "{{prodURL}}" ],
+							"path": [ "api", "admin", "escrows", "c9fe6822-46ee-4e7c-a4c4-333e67fc1f07", "complete" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "admin release",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}", "type": "string" } ] },
+						"method": "POST",
+						"header": [],
+						"description": "Admin releases a confirmed escrow → status becomes 'released'.",
+						"url": {
+							"raw": "{{prodURL}}/api/admin/escrows/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/release",
+							"host": [ "{{prodURL}}" ],
+							"path": [ "api", "admin", "escrows", "c9fe6822-46ee-4e7c-a4c4-333e67fc1f07", "release" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "admin refund",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}", "type": "string" } ] },
+						"method": "POST",
+						"header": [],
+						"description": "Admin refunds a disputed escrow → status becomes 'cancelled'.",
+						"url": {
+							"raw": "{{prodURL}}/api/admin/escrows/c9fe6822-46ee-4e7c-a4c4-333e67fc1f07/refund",
+							"host": [ "{{prodURL}}" ],
+							"path": [ "api", "admin", "escrows", "c9fe6822-46ee-4e7c-a4c4-333e67fc1f07", "refund" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "admin payout resolve",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}", "type": "string" } ] },
+						"method": "POST",
+						"header": [ { "key": "Content-Type", "value": "application/json", "type": "text" } ],
+						"description": "Admin resolves a payout (pending/sent -> resolved). Optional body note.",
+						"body": { "mode": "raw", "raw": "{\n  \"note\": \"Settlement confirmed\"\n}" },
+						"url": {
+							"raw": "{{prodURL}}/api/admin/payouts/REPLACE-PAYOUT-ID/resolve",
+							"host": [ "{{prodURL}}" ],
+							"path": [ "api", "admin", "payouts", "REPLACE-PAYOUT-ID", "resolve" ]
 						}
 					},
 					"response": []
@@ -835,6 +911,70 @@
 								{ "key": "offset", "value": "0" },
 								{ "key": "sort", "value": "-created" }
 							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "admin disputes",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}", "type": "string" } ] },
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/admin/disputes?status=&buyer=&seller=&limit=20&offset=0&sort=-created",
+							"host": [ "{{prodURL}}" ],
+							"path": [ "api", "admin", "disputes" ],
+							"query": [
+								{ "key": "status", "value": "" },
+								{ "key": "buyer", "value": "" },
+								{ "key": "seller", "value": "" },
+								{ "key": "limit", "value": "20" },
+								{ "key": "offset", "value": "0" },
+								{ "key": "sort", "value": "-created" }
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "admin dispute details",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}", "type": "string" } ] },
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/admin/disputes/ddddddd1-dddd-dddd-dddd-ddddddddddd1",
+							"host": [ "{{prodURL}}" ],
+							"path": [ "api", "admin", "disputes", "ddddddd1-dddd-dddd-dddd-ddddddddddd1" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "admin dispute reject",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}", "type": "string" } ] },
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/admin/disputes/ddddddd1-dddd-dddd-dddd-ddddddddddd1/reject",
+							"host": [ "{{prodURL}}" ],
+							"path": [ "api", "admin", "disputes", "ddddddd1-dddd-dddd-dddd-ddddddddddd1", "reject" ]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "admin dispute approve",
+					"request": {
+						"auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}", "type": "string" } ] },
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{prodURL}}/api/admin/disputes/ddddddd1-dddd-dddd-dddd-ddddddddddd1/approve",
+							"host": [ "{{prodURL}}" ],
+							"path": [ "api", "admin", "disputes", "ddddddd1-dddd-dddd-dddd-ddddddddddd1", "approve" ]
 						}
 					},
 					"response": []

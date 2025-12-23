@@ -9,6 +9,64 @@ import { requireKYCVerified } from "../middleware/kyc.js";
 const router = Router();
 
 /**
+ * GET /api/disputes/:id
+ * Returns dispute details + related escrow + evidence
+ * Auth: admin, or buyer/seller involved in the escrow
+ */
+router.get("/:id", authenticateJWT, async (req: AuthRequest, res: Response) => {
+  try {
+    const disputeId = req.params.id;
+
+    const [rows] = await db.query(
+      `SELECT 
+         d.id, d.escrow_id, d.status, d.created_at, d.updated_at,
+         e.amount, e.currency, e.status AS escrow_status,
+         e.buyer_id, b.email AS buyer_email,
+         e.seller_id, s.email AS seller_email
+       FROM disputes d
+       JOIN escrow_transactions e ON e.id = d.escrow_id
+       LEFT JOIN users b ON b.id = e.buyer_id
+       LEFT JOIN users s ON s.id = e.seller_id
+       WHERE d.id = ?`,
+      [disputeId]
+    );
+    const list = rows as any[];
+    if (list.length === 0) return res.status(404).json({ error: "Dispute not found" });
+    const dispute = list[0];
+
+    // Authorization: admin or participant (buyer/seller)
+    const userId = req.user?.id;
+    const isAdmin = req.user?.role === "admin";
+    const isParticipant = userId === dispute.buyer_id || userId === dispute.seller_id;
+    if (!isAdmin && !isParticipant) {
+      return res.status(403).json({ error: "Not authorized to view this dispute" });
+    }
+
+    // Load evidence entries (tolerate missing table or schema differences)
+    let evidence: any[] = [];
+    try {
+      const [tblRows] = await db.query("SHOW TABLES LIKE 'evidence'");
+      const exists = (tblRows as any[]).length > 0;
+      if (exists) {
+        const [evidRows] = await db.query(
+          `SELECT id, file_url, note, uploaded_by, created_at FROM evidence WHERE dispute_id = ? ORDER BY created_at ASC`,
+          [disputeId]
+        );
+        evidence = evidRows as any[];
+      }
+    } catch (e) {
+      console.error("Evidence query error:", e);
+      // proceed without evidence
+    }
+
+    return res.json({ dispute, evidence });
+  } catch (err) {
+    console.error("Get dispute error:", err);
+    return res.status(500).json({ error: "Internal server error", detail: (err as any)?.message || undefined });
+  }
+});
+
+/**
  * POST /api/disputes/:id/evidence
  * Body: { file_url, note }
  */
@@ -138,7 +196,7 @@ router.post("/:id/resolve", authenticateJWT, async (req: AuthRequest, res: Respo
     // update dispute
     await db.query(
       `UPDATE disputes 
-       SET status = 'resolved', resolved_at = NOW() 
+       SET status = 'resolved', updated_at = NOW() 
        WHERE id = ?`,
       [disputeId]
     );

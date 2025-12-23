@@ -5,7 +5,7 @@ import db from "../db.js";
 import { v4 as uuidv4 } from "uuid";
 import { authenticateJWT } from "../middleware/auth.js";
 import type { AuthRequest } from "../middleware/auth.js";
-import { requireKYCVerified } from "../middleware/kyc.js";
+// import { requireKYCVerified } from "../middleware/kyc.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -612,13 +612,13 @@ router.post("/:id/receipt", authenticateJWT, receiptUpload.any(), async (req: Au
       return res.status(400).json({ error: "Provide a receipt file (multipart) or file_url" });
     }
 
-    // persist buyer proof URL on escrow
+    // persist buyer proof URL on escrow and auto-confirm receipt by setting status to 'confirmed'
     await db.query(
-      "UPDATE escrow_transactions SET buyer_proof_url = COALESCE(?, buyer_proof_url), updated_at = NOW() WHERE id = ?",
+      "UPDATE escrow_transactions SET buyer_proof_url = COALESCE(?, buyer_proof_url), status = 'confirmed', updated_at = NOW() WHERE id = ?",
       [receipt_url, escrowId]
     );
 
-    // audit log
+    // audit log for receipt upload
     await db.query(
       `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
        VALUES (
@@ -638,10 +638,17 @@ router.post("/:id/receipt", authenticateJWT, receiptUpload.any(), async (req: Au
       ]
     );
 
+    // audit log for confirm status change
+    await db.query(
+      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (?, ?, 'confirm', 'escrow_transactions', ?, JSON_OBJECT('status','confirmed','via','receipt_upload'), NOW())`,
+      [uuidv4(), req.user?.id, escrowId]
+    );
+
     return res.status(201).json({
-      message: "Receipt uploaded successfully",
+      message: "Receipt uploaded and escrow confirmed successfully",
       receipt_url,
-      escrow: { id: escrowId, status: escrow.status, buyer_proof_url: receipt_url }
+      escrow: { id: escrowId, status: 'confirmed', buyer_proof_url: receipt_url }
     });
   } catch (err) {
     console.error("Upload receipt error:", err);
@@ -680,8 +687,12 @@ router.post("/:id/confirm", authenticateJWT, async (req: AuthRequest, res: Respo
       return res.status(403).json({ error: "You are not the buyer of this escrow" });
     }
 
+    if (escrow.status === "confirmed") {
+      // Idempotent: already confirmed
+      return res.json({ message: "Escrow already confirmed", escrow: { id: escrowId, status: "confirmed" } });
+    }
     if (escrow.status !== "shipped") {
-      return res.status(400).json({ error: "Escrow must be in 'shipped' state before confirming", current_status: escrow.status });
+      return res.status(400).json({ error: "Escrow must be in 'shipped' state before confirming", current_status: escrow.status, hint: "If you already uploaded a receipt, proceed to Release." });
     }
 
     // update escrow status
@@ -707,77 +718,6 @@ router.post("/:id/confirm", authenticateJWT, async (req: AuthRequest, res: Respo
   }
 });
 
-/**
- * POST /api/escrow/:id/release
- * Releases funds to seller (usually admin/system action)
- */
-router.post("/:id/release", authenticateJWT, async (req: AuthRequest, res: Response) => {
-  try {
-    const escrowId = req.params.id;
-
-    // Only admin or system can release funds
-    if (req.user?.role !== "admin") {
-      return res.status(403).json({ error: "Only admins can release escrow funds" });
-    }
-
-    // check escrow
-    const [escrowRows] = await db.query(
-      "SELECT id, status, seller_id FROM escrow_transactions WHERE id = ?",
-      [escrowId]
-    );
-    const escrows = escrowRows as any[];
-
-    if (escrows.length === 0) {
-      return res.status(404).json({ error: "Escrow not found" });
-    }
-
-    const escrow = escrows[0];
-
-    if (escrow.status !== "confirmed") {
-      return res.status(400).json({ error: "Escrow must be 'confirmed' before releasing funds" });
-    }
-
-    // check seller KYC status
-    const [sellerRows] = await db.query(
-      "SELECT kyc_status FROM users WHERE id = ?",
-      [escrow.seller_id]
-    );
-    const sellers = sellerRows as any[];
-    if (sellers.length === 0 || sellers[0].kyc_status !== "verified") {
-      return res.status(403).json({ error: "Seller is not KYC verified" });
-    }
-
-    // update escrow status
-    await db.query(
-      "UPDATE escrow_transactions SET status = 'released', updated_at = NOW() WHERE id = ?",
-      [escrowId]
-    );
-
-    // simulate payout record
-    const payoutId = uuidv4();
-    await db.query(
-      `INSERT INTO payouts (id, escrow_id, bank_account, method, status, sent_at, pg_reference)
-       VALUES (?, ?, '1234567890', 'BI-FAST', 'pending', NULL, NULL)`,
-      [payoutId, escrowId]
-    );
-
-    // audit log
-    await db.query(
-      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
-       VALUES (?, ?, 'release', 'escrow_transactions', ?, JSON_OBJECT('status','released'), NOW())`,
-      [uuidv4(), req.user?.id, escrowId]
-    );
-
-    res.json({
-      message: "Escrow released successfully, payout initiated",
-      escrow: { id: escrowId, status: "released" },
-      payout: { id: payoutId, status: "pending" }
-    });
-  } catch (err) {
-    console.error("Release escrow error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 /**
  * POST /api/escrow/:id/dispute
@@ -824,6 +764,12 @@ router.post("/:id/dispute", authenticateJWT, async (req: AuthRequest, res: Respo
       [disputeId, escrowId, req.user?.id, reason]
     );
 
+    // set escrow to dispute state
+    await db.query(
+      "UPDATE escrow_transactions SET status = 'dispute', updated_at = NOW() WHERE id = ?",
+      [escrowId]
+    );
+
     // audit log
     await db.query(
       `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
@@ -831,9 +777,17 @@ router.post("/:id/dispute", authenticateJWT, async (req: AuthRequest, res: Respo
       [uuidv4(), req.user?.id, disputeId, reason]
     );
 
+    // audit escrow status change
+    await db.query(
+      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (?, ?, 'status_change', 'escrow_transactions', ?, JSON_OBJECT('status','dispute'), NOW())`,
+      [uuidv4(), req.user?.id, escrowId]
+    );
+
     res.status(201).json({
       message: "Dispute opened successfully",
-      dispute: { id: disputeId, escrow_id: escrowId, reason, status: "open" }
+      dispute: { id: disputeId, escrow_id: escrowId, reason, status: "open" },
+      escrow: { id: escrowId, status: 'dispute' }
     });
   } catch (err) {
     console.error("Dispute escrow error:", err);
@@ -899,7 +853,7 @@ router.post("/:id/cancel", authenticateJWT, async (req: AuthRequest, res: Respon
  * POST /api/escrow/:id/release
  * Buyer releases funds → payout to seller
  */
-router.post("/:id/release", authenticateJWT, requireKYCVerified, async (req: AuthRequest, res: Response) => {
+router.post("/:id/release", authenticateJWT, async (req: AuthRequest, res: Response) => {
   try {
     const escrowId = req.params.id;
 
@@ -924,18 +878,50 @@ router.post("/:id/release", authenticateJWT, requireKYCVerified, async (req: Aut
       return res.status(400).json({ error: "Escrow must be confirmed before release" });
     }
 
+    // Ensure seller KYC verified before initiating payout
+    const [sRows] = await db.query("SELECT kyc_status FROM users WHERE id = ?", [escrow.seller_id]);
+    const sellers = sRows as any[];
+    if (sellers.length === 0 || sellers[0].kyc_status !== "verified") {
+      return res.status(403).json({ error: "Seller is not KYC verified" });
+    }
+
     // update status
     await db.query(
       "UPDATE escrow_transactions SET status = 'released', updated_at = NOW() WHERE id = ?",
       [escrowId]
     );
 
+    // ensure payouts table exists before inserting
+    try {
+      const [payoutsTableRows] = await db.query("SHOW TABLES LIKE 'payouts'");
+      const exists = (payoutsTableRows as any[]).length > 0;
+      if (!exists) {
+        console.error("Release payout error: payouts table missing");
+        return res.status(500).json({ error: "Internal server error", detail: "payouts table missing" });
+      }
+    } catch (metaErr) {
+      console.error("Release payout metadata check failed", metaErr);
+    }
+
     // create payout record
-    const payoutId = uuidv4();
+    let payoutId: string | null = null;
+    try {
+      payoutId = uuidv4();
+      await db.query(
+        `INSERT INTO payouts (id, escrow_id, seller_id, amount, status, created_at)
+         VALUES (?, ?, ?, (SELECT amount FROM escrow_transactions WHERE id = ?), 'pending', NOW())`,
+        [payoutId, escrowId, escrow.seller_id, escrowId]
+      );
+    } catch (payoutErr) {
+      console.error("Release payout insert error:", payoutErr);
+      return res.status(500).json({ error: "Internal server error", detail: "Failed to create payout" });
+    }
+
+    // audit log for buyer-initiated release
     await db.query(
-      `INSERT INTO payouts (id, escrow_id, seller_id, amount, status, created_at)
-       VALUES (?, ?, ?, (SELECT amount FROM escrow_transactions WHERE id = ?), 'pending', NOW())`,
-      [payoutId, escrowId, escrow.seller_id, escrowId]
+      `INSERT INTO audit_logs (id, actor_id, action, entity, entity_id, metadata, created_at)
+       VALUES (?, ?, 'release', 'escrow_transactions', ?, JSON_OBJECT('status','released','by','buyer'), NOW())`,
+      [uuidv4(), req.user?.id, escrowId]
     );
 
     res.json({
